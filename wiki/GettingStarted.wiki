@@ -1,0 +1,52 @@
+#summary One-sentence summary of this page.
+
+= Requirements =
+ * This code has been tested on linux with the TinyOS-2.1.2 Release Candidate 1 and avrdude 5.10. Please check that you have corretly set up your distribution: I will not give you any support for that, you can refer to the TinyOS mailing list for help: http://www.tinyos.net/community.html.
+ * The zigduino can be programmed through icsp pins (e.g., using an avrispmk2 programmer) or through usb if a bootloader is already in the chip. The zigduino should already be supplied with a bootloader. If it is, the zigduino starts blinking Led L several times before boot. If you are not sure, you can check if the bootloader is installed by using the arduino environment and by trying to upload a sample code on your mote. If it does not work, you can select "Tools"->"Burn Bootloader" and select the programmer you have. 
+The code I provide assumes you have the bootloader on your zigduino.
+
+= Intro =
+
+The porting is almost straightforward since the TinyOS-2.1.2-rc1 already supports the Atmega128RFA1 chip (it is used by the UCMini mote). As for now, two main issues have been faced:
+ * The absence of the 32Khz oscillator: It is used by the symbol counter and async timer (Timer2). It allows the mote to go in power save/standby/power down mode still keeping the oscillator running. Because of that, I re-wired these components to the main clock (which on the zigduino is represented by the 16Mhz transceiver oscillator). The drawback is that timers are stopped when the cpu switch to power save/standby/power down mode, thus, I had to set the idle state of the CPU as the lowest sleep state in order to keep timers running (in idle state and @1Mhz the current draw is approximately 0.4mA). There is also a loss of clock precision which is more high w.r.t. 32khz oscillator, but it shouldn't be a big issue for most applications.
+
+ * The default port setting: if no changes are made to ports PB,PD,PE,PF and PG, the zigduino draws much more current. I think it is related to the fact that, by default, the ports are set as input ports with internal pull-up resistors de-activated, thus, they are fluctuating. I wrote three components, namely, ZigduinoDigitalPorts,ZigduinoAnalogPorts and ZigduinoUnusedPorts that are called during init and set correctly set all the ports.
+
+All the remaining stuffs are just some re-wirings (leds,serial etc...) and other platform dependent adjustments.
+
+= Instructions =
+Assuming you match the previously described requirements, here are the steps to follow:
+ 
+ # Download the most recent release from the Downloads page (or checkout the code from the svn)
+ # Unzip the archive and call the folder as tinyos-2.x-contrib
+ # Add the following environmental variables to your bash:
+  * export TOSCONTRIB="absolute path to the tinyos-2.x-contrib folder you checked out"
+  * export TOSMAKE_PATH="$TOSCONTRIB/support/make"
+ # Go in your main TinyOS distribution (remember that it should be the 2.1.2-rc1 release) and go in the apps/Blink folder
+ # type: *make zigduino* , the Blink app should start compiling for  the zigduino platform
+ # to flash the Blink application to your zigduino type: *make zigduino reinstall,n zigduino,/dev/ttyUSBx* where n is the id of the mote and x the USB port (type dmesg if you don't know to which port the zigduino is plugged)
+ # If you want to read from serial (e.g., using tutorial/Printf) you need to set 230400 as speedrate.
+
+= Power Consumption =
+Keeping the Zigduino in Idle state (e.g., running the Null app), the current consumption is 5.8mA @ 16Mhz and decreases to 4.6mA @1Mhz (use CFLAGS+=-DPLATFORM_MHZ=x to set the clock speed at xMhz).
+Most of this current consumption is related to the Ftdi chip and the Power led which cannot be disabled except by unsodlering them. Without those components, the current draw should drop below 1mA, but I still need to check.
+
+= Accessing pins =
+There are two components, namely ZigduinoDigitalPortsC and ZigduinoAnalogPortsC that provide GeneralIO interfaces to all the Digital and Analog pins of your zigduino (they are called Digitalx and Analogx with x = pin number on the zigduino). By default Digital pins are set as output and with logic 0 while analog pins are set as input with pull-up resistors activated. You can change these settings by using the provided interfaces.
+
+= Current Status =
+Working parts:
+ * Compilation and flashing through usb
+ * Radio with/without LPL
+ * Serial port
+
+Tested apps:
+ * Blink
+ * RadioCountToLeds
+ * tests/TestNetworkLPL (localwakeup=remotewakeup=512)
+ * tutorial/Printf
+
+Planned:
+ * Check ADC (it should work as is, but need to check)
+ * Add I2C and SPI support
+ * ...
